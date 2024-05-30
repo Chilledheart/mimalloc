@@ -28,6 +28,7 @@ option(MI_DEBUG_TSAN        "Build with thread sanitizer (needs clang)" OFF)
 option(MI_DEBUG_UBSAN       "Build with undefined-behavior sanitizer (needs clang++)" OFF)
 option(MI_SKIP_COLLECT_ON_EXIT "Skip collecting memory on program exit" OFF)
 option(MI_NO_PADDING        "Force no use of padding even in DEBUG mode etc." OFF)
+option(MI_ENABLE_INSTALL    "Enable Install" OFF)
 option(MI_INSTALL_TOPLEVEL  "Install directly into $CMAKE_INSTALL_PREFIX instead of PREFIX/lib/mimalloc-version" OFF)
 option(MI_NO_THP            "Disable transparent huge pages support on Linux/Android for the mimalloc process only" OFF)
 
@@ -61,7 +62,7 @@ set(mi_sources
 set(mi_cflags "")
 set(mi_cflags_static "")            # extra flags for a static library build
 set(mi_cflags_dynamic "")           # extra flags for a shared-object library build
-set(mi_defines "")                   
+set(mi_defines "")
 set(mi_libraries "")
 
 # -----------------------------------------------------------------------------
@@ -327,7 +328,7 @@ if(CMAKE_C_COMPILER_ID MATCHES "AppleClang|Clang|GNU|Intel" AND NOT CMAKE_SYSTEM
       list(APPEND mi_cflags_dynamic -ftls-model=initial-exec)
       message(STATUS "Use local dynamic TLS for the static build (since MI_LIBC_MUSL=ON)")
     else()
-      list(APPEND mi_cflags -ftls-model=initial-exec)    
+      list(APPEND mi_cflags -ftls-model=initial-exec)
     endif()
   endif()
   if(MI_OVERRIDE)
@@ -345,18 +346,18 @@ endif()
 
 # extra needed libraries
 
-# we prefer -l<lib> test over `find_library` as sometimes core libraries 
+# we prefer -l<lib> test over `find_library` as sometimes core libraries
 # like `libatomic` are not on the system path (see issue #898)
-function(find_link_library libname outlibname)  
-  check_linker_flag(C "-l${libname}" mi_has_lib${libname})  
+function(find_link_library libname outlibname)
+  check_linker_flag(C "-l${libname}" mi_has_lib${libname})
   if (mi_has_lib${libname})
     message(VERBOSE "link library: -l${libname}")
-    set(${outlibname} ${libname} PARENT_SCOPE)    
+    set(${outlibname} ${libname} PARENT_SCOPE)
   else()
     find_library(MI_LIBPATH libname)
     if (MI_LIBPATH)
       message(VERBOSE "link library ${libname} at ${MI_LIBPATH}")
-      set(${outlibname} ${MI_LIBPATH} PARENT_SCOPE)      
+      set(${outlibname} ${MI_LIBPATH} PARENT_SCOPE)
     else()
       message(VERBOSE "link library not found: ${libname}")
       set(${outlibname} "" PARENT_SCOPE)
@@ -365,19 +366,19 @@ function(find_link_library libname outlibname)
 endfunction()
 
 if(WIN32)
-  list(APPEND mi_libraries psapi shell32 user32 advapi32 bcrypt)  
+  list(APPEND mi_libraries psapi shell32 user32 advapi32 bcrypt)
 else()
   find_link_library("pthread" MI_LIB_PTHREAD)
-  if(MI_LIB_PTHREAD) 
+  if(MI_LIB_PTHREAD)
     list(APPEND mi_libraries "${MI_LIB_PTHREAD}")
   endif()
   find_link_library("rt" MI_LIB_RT)
-  if(MI_LIB_RT) 
+  if(MI_LIB_RT)
     list(APPEND mi_libraries "${MI_LIB_RT}")
   endif()
   find_link_library("atomic" MI_LIB_ATOMIC)
-  if(MI_LIB_ATOMIC) 
-    list(APPEND mi_libraries "${MI_LIB_ATOMIC}")  
+  if(MI_LIB_ATOMIC)
+    list(APPEND mi_libraries "${MI_LIB_ATOMIC}")
   endif()
 endif()
 
@@ -471,11 +472,15 @@ if(MI_BUILD_SHARED)
     add_custom_command(TARGET mimalloc POST_BUILD
       COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_CURRENT_SOURCE_DIR}/bin/mimalloc-redirect${MIMALLOC_REDIRECT_SUFFIX}.dll" $<TARGET_FILE_DIR:mimalloc>
       COMMENT "Copy mimalloc-redirect${MIMALLOC_REDIRECT_SUFFIX}.dll to output directory")
-    install(FILES "$<TARGET_FILE_DIR:mimalloc>/mimalloc-redirect${MIMALLOC_REDIRECT_SUFFIX}.dll" DESTINATION ${mi_install_bindir})
+    if (MI_ENABLE_INSTALL)
+      install(FILES "$<TARGET_FILE_DIR:mimalloc>/mimalloc-redirect${MIMALLOC_REDIRECT_SUFFIX}.dll" DESTINATION ${mi_install_bindir})
+    endif()
   endif()
 
-  install(TARGETS mimalloc EXPORT mimalloc ARCHIVE DESTINATION ${mi_install_libdir} RUNTIME DESTINATION ${mi_install_bindir} LIBRARY DESTINATION ${mi_install_libdir})
-  install(EXPORT mimalloc DESTINATION ${mi_install_cmakedir})
+  if (MI_ENABLE_INSTALL)
+    install(TARGETS mimalloc EXPORT mimalloc ARCHIVE DESTINATION ${mi_install_libdir} RUNTIME DESTINATION ${mi_install_bindir} LIBRARY DESTINATION ${mi_install_libdir})
+    install(EXPORT mimalloc DESTINATION ${mi_install_cmakedir})
+  endif()
 endif()
 
 # static library
@@ -498,16 +503,20 @@ if (MI_BUILD_STATIC)
     set_target_properties(mimalloc-static PROPERTIES OUTPUT_NAME ${mi_basename})
   endif()
 
-  install(TARGETS mimalloc-static EXPORT mimalloc DESTINATION ${mi_install_objdir} LIBRARY)
-  install(EXPORT mimalloc DESTINATION ${mi_install_cmakedir})
+  if (MI_ENABLE_INSTALL)
+    install(TARGETS mimalloc-static EXPORT mimalloc DESTINATION ${mi_install_objdir} LIBRARY)
+    install(EXPORT mimalloc DESTINATION ${mi_install_cmakedir})
+  endif()
 endif()
 
 # install include files
-install(FILES include/mimalloc.h DESTINATION ${mi_install_incdir})
-install(FILES include/mimalloc-override.h DESTINATION ${mi_install_incdir})
-install(FILES include/mimalloc-new-delete.h DESTINATION ${mi_install_incdir})
-install(FILES cmake/mimalloc-config.cmake DESTINATION ${mi_install_cmakedir})
-install(FILES cmake/mimalloc-config-version.cmake DESTINATION ${mi_install_cmakedir})
+if (MI_ENABLE_INSTALL)
+  install(FILES include/mimalloc.h DESTINATION ${mi_install_incdir})
+  install(FILES include/mimalloc-override.h DESTINATION ${mi_install_incdir})
+  install(FILES include/mimalloc-new-delete.h DESTINATION ${mi_install_incdir})
+  install(FILES cmake/mimalloc-config.cmake DESTINATION ${mi_install_cmakedir})
+  install(FILES cmake/mimalloc-config-version.cmake DESTINATION ${mi_install_cmakedir})
+endif()
 
 
 # single object file for more predictable static overriding
@@ -534,9 +543,11 @@ if (MI_BUILD_OBJECT)
 
   # the FILES expression can also be: $<TARGET_OBJECTS:mimalloc-obj>
   # but that fails cmake versions less than 3.10 so we leave it as is for now
-  install(FILES ${mimalloc-obj-static}
-          DESTINATION ${mi_install_objdir}
-          RENAME ${mi_basename}${CMAKE_C_OUTPUT_EXTENSION} )
+  if (MI_ENABLE_INSTALL)
+    install(FILES ${mimalloc-obj-static}
+            DESTINATION ${mi_install_objdir}
+            RENAME ${mi_basename}${CMAKE_C_OUTPUT_EXTENSION} )
+  endif()
 endif()
 
 # pkg-config file support
@@ -554,8 +565,10 @@ join_paths(includedir_for_pc_file "\${prefix}" "${CMAKE_INSTALL_INCLUDEDIR}")
 join_paths(libdir_for_pc_file "\${prefix}" "${CMAKE_INSTALL_LIBDIR}")
 
 configure_file(mimalloc.pc.in mimalloc.pc @ONLY)
-install(FILES "${CMAKE_CURRENT_BINARY_DIR}/mimalloc.pc"
-        DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig/")
+if (MI_ENABLE_INSTALL)
+  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/mimalloc.pc"
+          DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig/")
+endif()
 
 
 
